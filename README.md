@@ -1,8 +1,16 @@
 # チャットアプリ
 ## 概要
+- `WebSocket` の接続確認
+```
+go run main.go
+
+curl -i -N -H "Connection: Upgrade" -H "Upgrade: websocket" -H "Sec-WebSocket-Version: 13" -H "Sec-WebSocket-Key: WIY4slX50bnnSF1GaedKhg==" -H "Host: localhost:8080" http://localhost:8080/ws
+```
+
 
 ## メモ
 - `goroutine` や `channel` の実装練習
+- 双方向通信プロトコルの `WebSocket` についてのキャッチアップ
 - チャットアプリのようなユーザーA、ユーザーBが同時にサーバーに接続している状況において、リアルタイムにメッセージをやり取りするには、双方向通信のプロトコルである `WebSocket` が使える
 - `WebSocket` は `ユーザーA - サーバー` , `ユーザーB - サーバー` で個別に接続を確立する
   - サーバーを介してユーザーAとユーザーBはリアルタイムにメッセージのやり取りを行う
