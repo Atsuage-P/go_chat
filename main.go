@@ -34,7 +34,7 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	intermediary := intermediary{msg: make(chan Message)}
+	intermediary := newIntermediary()
 	client := newClient(conn, intermediary)
 
 	go client.read()
@@ -45,6 +45,12 @@ type intermediary struct {
 	msg chan Message
 }
 
+func newIntermediary() *intermediary {
+	return &intermediary{
+		msg: make(chan Message),
+	}
+}
+
 func (i *intermediary) run() {
 	// クライアントAから送られてきたメッセージを読み取ってチャネルに入れる
 
@@ -53,12 +59,12 @@ func (i *intermediary) run() {
 
 type client struct {
 	conn         *websocket.Conn
-	intermediary intermediary
+	intermediary *intermediary
 }
 
 func newClient(
 	conn *websocket.Conn,
-	intermediary intermediary,
+	intermediary *intermediary,
 ) *client {
 	return &client{
 		conn:         conn,
@@ -79,7 +85,7 @@ func (c *client) read() {
 
 func (c *client) write() {
 	for {
-		message := <- c.intermediary.msg
+		message := <-c.intermediary.msg
 		fmt.Println(message)
 		if err := c.conn.WriteMessage(message.Type, message.Message); err != nil {
 			log.Printf("WriteMessage Error: %v", err)
