@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"log"
 	"net/http"
 
@@ -14,8 +13,13 @@ type Message struct {
 }
 
 func main() {
+	intermediary := newIntermediary()
+	go intermediary.run()
+
 	http.HandleFunc("/", top)
-	http.HandleFunc("/ws", handleWebSocket)
+	http.HandleFunc("/ws", func(w http.ResponseWriter, r *http.Request) {
+		handleWebSocket(w, r, intermediary)
+	})
 	err := http.ListenAndServe(":8080", nil)
 	if err != nil {
 		log.Fatal("ListenAndServe: ", err)
@@ -26,7 +30,7 @@ func top(w http.ResponseWriter, r *http.Request) {
 	http.ServeFile(w, r, "index.html")
 }
 
-func handleWebSocket(w http.ResponseWriter, r *http.Request) {
+func handleWebSocket(w http.ResponseWriter, r *http.Request, i *intermediary) {
 	upgrader := websocket.Upgrader{}
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
@@ -34,32 +38,49 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	intermediary := newIntermediary()
-	client := newClient(conn, intermediary)
+	client := newClient(conn, i)
+	client.intermediary.register <- client
 
 	go client.read()
 	go client.write()
 }
 
 type intermediary struct {
-	msg chan Message
+	msg      chan Message
+	register chan *client
+	clients  map[*client]bool
 }
 
 func newIntermediary() *intermediary {
 	return &intermediary{
-		msg: make(chan Message),
+		msg:      make(chan Message),
+		register: make(chan *client),
+		clients:  make(map[*client]bool),
 	}
 }
 
 func (i *intermediary) run() {
-	// クライアントAから送られてきたメッセージを読み取ってチャネルに入れる
-
-	// チャネルに入っているメッセージを取り出してクライアントBに送る
+	for {
+		select {
+		case client := <-i.register:
+			i.clients[client] = true
+		case message := <-i.msg:
+			for client := range i.clients {
+				select {
+				case client.msg <- message:
+				default:
+					close(client.msg)
+					delete(i.clients, client)
+				}
+			}
+		}
+	}
 }
 
 type client struct {
 	conn         *websocket.Conn
 	intermediary *intermediary
+	msg          chan Message
 }
 
 func newClient(
@@ -69,6 +90,7 @@ func newClient(
 	return &client{
 		conn:         conn,
 		intermediary: intermediary,
+		msg:          make(chan Message),
 	}
 }
 
@@ -85,8 +107,7 @@ func (c *client) read() {
 
 func (c *client) write() {
 	for {
-		message := <-c.intermediary.msg
-		fmt.Println(message)
+		message := <-c.msg
 		if err := c.conn.WriteMessage(message.Type, message.Message); err != nil {
 			log.Printf("WriteMessage Error: %v", err)
 			c.conn.Close()
